@@ -1,0 +1,5 @@
+ {
+    "load_pack" : "default-minecraft-1.19",
+    "save_pack" : "voxel-consistent-resourcepack-1.19",
+    "namespace" : "minecraft"
+}
