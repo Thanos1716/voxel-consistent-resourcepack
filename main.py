@@ -5,6 +5,7 @@ import sys
 import numpy as np
 from PIL import Image
 
+from modelling import write_face, read_face
 from viewing import view_model, view_image
 from file_manager import load_json, save_json
 
@@ -58,64 +59,6 @@ def get_texture(alias, textures):
             return
     return alias
 
-def write_face(face, uv, uv_rotation, origin_from, origin_to, img_data, voxel_data):
-    # Tells us whether to set the origin of a texture to the "from" or the "to" coordinate
-    origin_map = { #    [x, y, z]
-        "down"  :       [0, 0, 1],
-        "up"    :       [0, 1, 0],
-        "north" :       [1, 1, 0],
-        "south" :       [0, 1, 1],
-        "west"  :       [0, 1, 0],
-        "east"  :       [1, 1, 1]
-    }
-
-    # Tells us whether a voxel should be translated based on the x coordinate in the texture
-    translate_x_map = { # [x, y, z]
-        "down"  :         [1, 0, 0],
-        "up"    :         [1, 0, 0],
-        "north" :         [1, 0, 0],
-        "south" :         [1, 0, 0],
-        "west"  :         [0, 0, 1],
-        "east"  :         [0, 0, 1]
-    }
-
-    # Tells us whether a voxel should be translated based on the y coordinate in the texture
-    translate_y_map = { # [x, y, z]
-        "down"  :         [0, 0, 1],
-        "up"    :         [0, 0, 1],
-        "north" :         [0, 1, 0],
-        "south" :         [0, 1, 0],
-        "west"  :         [0, 1, 0],
-        "east"  :         [0, 1, 0]
-    }
-
-
-    img_data = np.rot90(img_data, rotation / 90)
-
-    x_origin = (origin_to[0] - 1) if origin_map[face][0] else origin_from[0]
-    y_origin = (origin_to[1] - 1) if origin_map[face][1] else origin_from[1]
-    z_origin = (origin_to[2] - 1) if origin_map[face][2] else origin_from[2]
-
-    # print(face)
-    # print("uvs:", uv[2] - uv[0], uv[3] - uv[1])
-    for i in range(3):
-        if (translate_x_map[face][i] + translate_y_map[face][i]) * (origin_to[i] - origin_from[i]) != translate_x_map[face][i] * (uv[2] - uv[0]) + translate_y_map[face][i] * (uv[3] - uv[1]):
-            print("WARNING: Texture scaling voxel inconsistent, voxel model will be incorrect")
-
-
-    for y in range(uv[1], uv[3]):  # these ranges ignore mirrored textures which needs FIXING
-        for x in range(uv[0], uv[2]):
-            try:
-                voxel_data[
-                    z_origin - (origin_map[face][2] * 2 - 1) * ((translate_x_map[face][2] * (x - uv[0])) + (translate_y_map[face][2] * (y - uv[1]))),
-                    y_origin - (origin_map[face][1] * 2 - 1) * ((translate_x_map[face][1] * (x - uv[0])) + (translate_y_map[face][1] * (y - uv[1]))),
-                    x_origin - (origin_map[face][0] * 2 - 1) * ((translate_x_map[face][0] * (x - uv[0])) + (translate_y_map[face][0] * (y - uv[1])))
-                ] = img_data[y, x]
-            except IndexError as error:
-                print(f"WARNING: Voxel out-of-bounds: {error}")
-
-def read_face():
-    pass
 
 config = load_json("config.json")
 load_pack = config["load_pack"]
@@ -148,10 +91,11 @@ for block in blocks:
             texture = get_texture(face_data["texture"], full_model["textures"])
             namespace, pathid = split_namespace_pathid("minecraft", texture)
 
-            if texture is not None:
-                img = Image.open("{}/assets/{}/textures/{}.png".format(load_pack, namespace, pathid))
-            else:
-                img = Image.open("missing.png")
+            # if texture is not None:
+                # img = Image.open("{}/assets/{}/textures/{}.png".format(load_pack, namespace, pathid))
+            # else:
+                # img = Image.open("missing.png")
+            img = Image.open(f"{load_pack}/assets/minecraft/textures/block/debug2.png")
             img_data = np.array(img)
 
             try:
@@ -167,7 +111,25 @@ for block in blocks:
 
             write_face(face, uv, rotation, element["from"], element["to"], img_data, voxel_data)
 
-    view_model(voxel_data)
+    new_model = full_model#load_json(f"{load_pack}/assets/{namespace}/models/{block}.json")
+
+    for i_element, element in enumerate(full_model["elements"]):
+        for face, face_data in element["faces"].items():
+
+            img_data = read_face(face, uv, rotation, element["from"], element["to"], voxel_data)
+            print(img_data)
+            img = Image.fromarray(img_data)
+
+            texture = get_texture(face_data["texture"], full_model["textures"])
+            namespace, pathid = split_namespace_pathid("minecraft", texture)
+            img.save(f"{save_pack}/assets/{namespace}/textures/{block}_{i_element}_{face}.png")
+
+            new_model["textures"][f"{block}_{i_element}_{face}"] = f"{block}_{i_element}_{face}"
+            new_model["elements"][i_element]["faces"][face]["texture"] = f"#{block}_{i_element}_{face}"
+
+            save_json(f"{save_pack}/assets/{namespace}/models/{block}.json", new_model)
+
+    # view_model(voxel_data, point_size=150)
 
 
 
