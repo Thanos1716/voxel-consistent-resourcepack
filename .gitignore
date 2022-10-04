@@ -1,7 +1,8 @@
 __pycache__
 default-minecraft-1.19
 json.json
-old_code.py
 opengl.py
 debug.png
 debug2.png
+*.kate-swp
+voxel-consistent-resourcepack-1.19

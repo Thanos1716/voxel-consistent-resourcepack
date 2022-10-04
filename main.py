@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 import random
 import sys
+import os
+import shutil
 
 import numpy as np
 from PIL import Image
@@ -8,6 +10,23 @@ from PIL import Image
 from modelling import write_face, read_face
 from viewing import view_model, view_image
 from file_manager import load_json, save_json
+
+
+def init_resourcepack(save_pack):
+    try:
+        shutil.rmtree(f"{save_pack}")
+        print("INFO: Removed old generated resourcepack")
+    except FileNotFoundError:
+        pass
+
+    os.makedirs(f"{save_pack}/assets/{namespace}/textures/block")
+    os.makedirs(f"{save_pack}/assets/{namespace}/models/block")
+    print("INFO: Created new resourcepack directory")
+
+    shutil.copy2(f"{load_pack}/pack.png", f"{save_pack}/pack.png")
+    shutil.copy2(f"{load_pack}/pack.mcmeta", f"{save_pack}/pack.mcmeta")
+    print("INFO: Initialised new resourcepack")
+
 
 
 def get_parent(namespace, model):
@@ -59,6 +78,79 @@ def get_texture(alias, textures):
             return
     return alias
 
+def write_pack(save_pack, blocks, namespace):
+
+    init_resourcepack(save_pack)
+
+    for block in blocks:
+        try:
+            current_model = load_json(f"{load_pack}/assets/{namespace}/models/{block}.json")
+        except FileNotFoundError:
+            print(f"WARNING: '{block}' model not found")
+            continue
+
+        print(f"INFO: Starting model {block}")
+
+        full_model = current_model
+
+        while parent := get_parent(namespace, current_model):
+            current_model = load_json(f"{load_pack}/assets/{namespace}/models/{parent}.json")
+            full_model = recursive_compile_dict(full_model, current_model)
+
+        save_json("json.json", full_model)
+
+        voxel_count = 16
+        voxel_data = np.zeros([voxel_count, voxel_count, voxel_count, 4], dtype=np.uint8)  # TODO: make voxel_count + 2 not distort model
+
+        for element in full_model["elements"]:
+
+            # voxel_data[element["from"][2]:element["to"][2], element["from"][1]:element["to"][1], element["from"][0]:element["to"][0]] = [random.randint(0, 255) for _ in range(3)] + [255]
+
+            for face, face_data in element["faces"].items():
+
+                texture = get_texture(face_data["texture"], full_model["textures"])
+                namespace, pathid = split_namespace_pathid("minecraft", texture)
+
+                if texture is not None:
+                    img = Image.open("{}/assets/{}/textures/{}.png".format(load_pack, namespace, pathid))
+                else:
+                    img = Image.open("missing.png")
+                # img = Image.open(f"{load_pack}/assets/minecraft/textures/block/debug2.png")
+                img_data = np.array(img)
+
+                try:
+                    uv = face_data["uv"]
+                except KeyError:
+                    # uv = [0, 0, 0, 0]
+                    uv = [0, 0, voxel_count, voxel_count]
+
+                try:
+                    rotation = face_data["rotation"]
+                except KeyError:
+                    rotation = 0
+
+                write_face(face, uv, rotation, element["from"], element["to"], img_data, voxel_data)
+
+        new_model = full_model#load_json(f"{load_pack}/assets/{namespace}/models/{block}.json")
+
+        for i_element, element in enumerate(full_model["elements"]):
+            for face, face_data in element["faces"].items():
+
+                img_data = read_face(face, uv, rotation, element["from"], element["to"], voxel_data)
+                # print(img_data)
+                img = Image.fromarray(img_data)
+
+                texture = get_texture(face_data["texture"], full_model["textures"])
+                namespace, pathid = split_namespace_pathid("minecraft", texture)
+
+                img.save(f"{save_pack}/assets/{namespace}/textures/{block}_{i_element}_{face}.png")
+
+                new_model["textures"][f"{block}_{i_element}_{face}"] = f"{block}_{i_element}_{face}"
+                new_model["elements"][i_element]["faces"][face]["texture"] = f"#{block}_{i_element}_{face}"
+
+                save_json(f"{save_pack}/assets/{namespace}/models/{block}.json", new_model)
+
+
 
 config = load_json("config.json")
 load_pack = config["load_pack"]
@@ -66,69 +158,12 @@ save_pack = config["save_pack"]
 namespace = config["namespace"]
 
 if not bool(blocks := sys.argv[1:]):
-    blocks = ["block/comparator_on", "block/repeater_1tick_on", "block/stone", "block/grass_block"]
+    # blocks = ["block/comparator_on", "block/repeater_1tick_on", "block/stone", "block/grass_block"]
 
+    with open("blocks.txt", 'r') as f:
+        blocks = f.read().split("\n")
 
-for block in blocks:
-    current_model = load_json(f"{load_pack}/assets/{namespace}/models/{block}.json")
-    full_model = current_model
-
-    while parent := get_parent(namespace, current_model):
-        current_model = load_json(f"{load_pack}/assets/{namespace}/models/{parent}.json")
-        full_model = recursive_compile_dict(full_model, current_model)
-
-    save_json("json.json", full_model)
-
-    voxel_count = 16
-    voxel_data = np.zeros([voxel_count, voxel_count, voxel_count, 4], dtype=np.uint8)  # TODO: make voxel_count + 2 not distort model
-
-    for element in full_model["elements"]:
-
-        # voxel_data[element["from"][2]:element["to"][2], element["from"][1]:element["to"][1], element["from"][0]:element["to"][0]] = [random.randint(0, 255) for _ in range(3)] + [255]
-
-        for face, face_data in element["faces"].items():
-
-            texture = get_texture(face_data["texture"], full_model["textures"])
-            namespace, pathid = split_namespace_pathid("minecraft", texture)
-
-            # if texture is not None:
-                # img = Image.open("{}/assets/{}/textures/{}.png".format(load_pack, namespace, pathid))
-            # else:
-                # img = Image.open("missing.png")
-            img = Image.open(f"{load_pack}/assets/minecraft/textures/block/debug2.png")
-            img_data = np.array(img)
-
-            try:
-                uv = face_data["uv"]
-            except KeyError:
-                # uv = [0, 0, 0, 0]
-                uv = [0, 0, voxel_count, voxel_count]
-
-            try:
-                rotation = face_data["rotation"]
-            except KeyError:
-                rotation = 0
-
-            write_face(face, uv, rotation, element["from"], element["to"], img_data, voxel_data)
-
-    new_model = full_model#load_json(f"{load_pack}/assets/{namespace}/models/{block}.json")
-
-    for i_element, element in enumerate(full_model["elements"]):
-        for face, face_data in element["faces"].items():
-
-            img_data = read_face(face, uv, rotation, element["from"], element["to"], voxel_data)
-            print(img_data)
-            img = Image.fromarray(img_data)
-
-            texture = get_texture(face_data["texture"], full_model["textures"])
-            namespace, pathid = split_namespace_pathid("minecraft", texture)
-            img.save(f"{save_pack}/assets/{namespace}/textures/{block}_{i_element}_{face}.png")
-
-            new_model["textures"][f"{block}_{i_element}_{face}"] = f"{block}_{i_element}_{face}"
-            new_model["elements"][i_element]["faces"][face]["texture"] = f"#{block}_{i_element}_{face}"
-
-            save_json(f"{save_pack}/assets/{namespace}/models/{block}.json", new_model)
-
+    write_pack(save_pack, blocks, namespace)
     # view_model(voxel_data, point_size=150)
 
 

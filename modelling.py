@@ -37,7 +37,7 @@ def write_face(face, uv, uv_rotation, origin_from, origin_to, img_data, voxel_da
 
     from viewing import view_model
     for i in range(uv_rotation // 90):
-        print(uv)
+        # print(uv)
         # return
 
         uv = [uv[3]] + uv[:3]
