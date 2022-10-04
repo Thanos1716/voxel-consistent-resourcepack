@@ -112,7 +112,7 @@ def write_pack(save_pack, blocks, namespace):
                 namespace, pathid = split_namespace_pathid("minecraft", texture)
 
                 if texture is not None:
-                    img = Image.open("{}/assets/{}/textures/{}.png".format(load_pack, namespace, pathid))
+                    img = Image.open("{}/assets/{}/textures/{}.png".format(load_pack, namespace, pathid)).convert("RGBA")
                 else:
                     img = Image.open("missing.png")
                 # img = Image.open(f"{load_pack}/assets/minecraft/textures/block/debug2.png")
